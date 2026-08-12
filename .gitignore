@@ -1,0 +1,38 @@
+# --- Secrets ---
+.env
+*.env
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# --- Vector store / data (regenerated, often large) ---
+data/chroma_db/
+data/processed/
+*.sqlite3
+*.parquet
+
+# --- Streamlit ---
+.streamlit/secrets.toml
+
+# --- Testing / tooling ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
