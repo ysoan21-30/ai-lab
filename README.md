@@ -3,10 +3,10 @@
 A retrieval-augmented chatbot for fraud analysis, built on the Anthropic API,
 ChromaDB for vector storage, and Streamlit for the UI.
 
-> **Status:** ingestion (`src/ingestion/loader.py`) and retrieval
-> (`src/retrieval/vector_store.py`) are implemented. The Claude chat/RAG
-> loop (`src/chat/claude_client.py`) and the Streamlit UI wiring are not
-> yet implemented.
+> **Status:** ingestion (`src/ingestion/loader.py`), retrieval
+> (`src/retrieval/vector_store.py`), and the RAG chat loop
+> (`src/chat/claude_client.py`) are implemented. Only the Streamlit UI
+> wiring (`app.py`) is left as a stub.
 
 ## Project structure
 
@@ -56,10 +56,9 @@ streamlit run app.py
 
 ```bash
 pytest                    # fast suite — no network calls, safe to run anytime
-pytest -m integration     # also hits the real Voyage AI API (needs VOYAGE_API_KEY)
+pytest -m integration     # also hits real Voyage AI + Anthropic APIs (needs VOYAGE_API_KEY, ANTHROPIC_API_KEY)
 ```
 
 ## Next steps
 
-1. Implement `src/chat/claude_client.py` — retrieval-augmented prompting.
-2. Wire `app.py` up to the chat loop with streamed responses.
+1. Wire `app.py` up to `src.chat.claude_client.answer_question` with streamed responses.
