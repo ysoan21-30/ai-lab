@@ -1,20 +1,28 @@
 """Tests for src/retrieval/vector_store.py.
 
 Fast tests use an in-memory Chroma client (never touches data/chroma_db)
-plus fake embedding functions/clients — no network calls. The single
-@pytest.mark.integration test hits the real Voyage AI API and is excluded
-by default; run it explicitly with `pytest -m integration` (requires a real
-VOYAGE_API_KEY in the environment).
+plus fake embedding functions/clients — no network calls, and `time.sleep`
+is monkeypatched so rate-limit delays don't actually slow the suite down.
+The single @pytest.mark.integration test hits the real Voyage AI API and
+is excluded by default; run it explicitly with `pytest -m integration`
+(requires a real VOYAGE_API_KEY in the environment).
 """
 
 import uuid
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import chromadb
 import pytest
 
 from src.config import settings
-from src.retrieval.vector_store import VoyageEmbeddingFunction, add_documents, query
+from src.retrieval import vector_store
+from src.retrieval.vector_store import (
+    EMBED_BATCH_SIZE,
+    VoyageEmbeddingFunction,
+    add_documents,
+    query,
+)
 
 SAMPLE_CHUNKS = [
     {
@@ -26,6 +34,16 @@ SAMPLE_CHUNKS = [
         "metadata": {"source": "phishing_cases.txt", "chunk_index": 0},
     },
 ]
+
+
+def _make_chunks(n: int, source: str = "bulk.txt") -> list[dict]:
+    return [
+        {
+            "text": f"wire transfer case number {i}",
+            "metadata": {"source": source, "chunk_index": i},
+        }
+        for i in range(n)
+    ]
 
 
 def _keyword_vector(text: str) -> list[float]:
@@ -81,28 +99,79 @@ def in_memory_collection():
     )
 
 
+@pytest.fixture(autouse=True)
+def no_real_sleep(monkeypatch):
+    """Never actually sleep in the fast suite — tests still assert on
+    whether/how often add_documents *would* have slept."""
+    monkeypatch.setattr(vector_store.time, "sleep", MagicMock())
+
+
 def test_add_documents_generates_stable_ids_from_metadata(in_memory_collection):
-    ids = add_documents(SAMPLE_CHUNKS, collection=in_memory_collection)
+    ids = add_documents(SAMPLE_CHUNKS, collection=in_memory_collection, voyage_client=FakeVoyageClient())
 
     assert ids == ["wire_cases.txt::0", "phishing_cases.txt::0"]
     assert in_memory_collection.count() == 2
 
 
 def test_add_documents_reingest_upserts_instead_of_duplicating(in_memory_collection):
-    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection)
-    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection)  # re-ingest same file
+    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection, voyage_client=FakeVoyageClient())
+    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection, voyage_client=FakeVoyageClient())
 
     # Same source + chunk_index -> same ID -> upsert, not duplicate rows.
     assert in_memory_collection.count() == 2
 
 
 def test_add_documents_empty_list_is_a_noop(in_memory_collection):
-    assert add_documents([], collection=in_memory_collection) == []
+    assert add_documents([], collection=in_memory_collection, voyage_client=FakeVoyageClient()) == []
     assert in_memory_collection.count() == 0
 
 
+def test_add_documents_single_batch_makes_one_call_and_does_not_sleep(in_memory_collection):
+    fake_client = FakeVoyageClient()
+
+    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection, voyage_client=fake_client)
+
+    assert len(fake_client.calls) == 1
+    assert fake_client.calls[0]["input_type"] == "document"
+    vector_store.time.sleep.assert_not_called()
+
+
+def test_add_documents_batches_large_ingests_and_delays_between_batches(in_memory_collection):
+    num_chunks = EMBED_BATCH_SIZE * 2 + 3  # guarantees 3 uneven batches
+    chunks = _make_chunks(num_chunks)
+    fake_client = FakeVoyageClient()
+
+    add_documents(chunks, collection=in_memory_collection, voyage_client=fake_client)
+
+    assert [len(call["texts"]) for call in fake_client.calls] == [
+        EMBED_BATCH_SIZE,
+        EMBED_BATCH_SIZE,
+        3,
+    ]
+    assert all(call["input_type"] == "document" for call in fake_client.calls)
+    assert in_memory_collection.count() == num_chunks
+
+    # Delay happens BETWEEN batches only: 3 batches -> 2 sleeps, not 3.
+    assert vector_store.time.sleep.call_count == 2
+
+
+def test_add_documents_reports_progress_after_each_batch(in_memory_collection):
+    num_chunks = EMBED_BATCH_SIZE + 2
+    chunks = _make_chunks(num_chunks)
+    progress_calls = []
+
+    add_documents(
+        chunks,
+        collection=in_memory_collection,
+        voyage_client=FakeVoyageClient(),
+        progress_callback=lambda done, total: progress_calls.append((done, total)),
+    )
+
+    assert progress_calls == [(EMBED_BATCH_SIZE, num_chunks), (num_chunks, num_chunks)]
+
+
 def test_query_embeds_query_text_with_input_type_query(in_memory_collection):
-    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection)
+    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection, voyage_client=FakeVoyageClient())
     fake_client = FakeVoyageClient()
 
     query(
@@ -117,7 +186,7 @@ def test_query_embeds_query_text_with_input_type_query(in_memory_collection):
 
 
 def test_query_returns_top_k_ranked_chunks_with_text_metadata_score(in_memory_collection):
-    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection)
+    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection, voyage_client=FakeVoyageClient())
     fake_client = FakeVoyageClient()
 
     results = query(
@@ -136,7 +205,7 @@ def test_query_returns_top_k_ranked_chunks_with_text_metadata_score(in_memory_co
 
 
 def test_query_empty_text_returns_no_results(in_memory_collection):
-    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection)
+    add_documents(SAMPLE_CHUNKS, collection=in_memory_collection, voyage_client=FakeVoyageClient())
     assert query("   ", collection=in_memory_collection, voyage_client=FakeVoyageClient()) == []
 
 
@@ -146,7 +215,9 @@ def test_add_and_query_with_real_voyage_api():
     """End-to-end smoke test against the real Voyage AI API.
 
     Uses an ephemeral in-memory Chroma collection (never touches
-    data/chroma_db), but makes real network calls to Voyage.
+    data/chroma_db), but makes real network calls to Voyage. Only 2 sample
+    chunks, so this stays within a single batch and never hits the
+    rate-limit delay.
     """
     client = chromadb.Client()
     collection = client.create_collection(

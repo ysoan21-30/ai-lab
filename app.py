@@ -52,23 +52,38 @@ with st.sidebar:
         type=["pdf", "txt"],
         accept_multiple_files=True,
     )
+    st.caption(
+        "Embedding respects Voyage AI's free-tier rate limit (3 requests/minute), "
+        "so ingesting more than a few chunks can take a minute or more."
+    )
     if st.button("Ingest documents", disabled=not uploaded_files):
-        with st.spinner("Ingesting documents..."):
-            try:
-                with tempfile.TemporaryDirectory() as tmp_dir:
-                    tmp_path = Path(tmp_dir)
-                    for uploaded_file in uploaded_files:
-                        (tmp_path / uploaded_file.name).write_bytes(uploaded_file.getbuffer())
-                    chunks = loader.load_documents(str(tmp_path))
-                    if chunks:
-                        vector_store.add_documents(chunks)
-            except Exception as exc:
-                st.error(f"Ingestion failed: {exc}")
-            else:
+        progress_text = st.empty()
+        progress_bar = st.progress(0.0)
+
+        def _on_progress(done: int, total: int) -> None:
+            progress_text.text(f"Embedding chunk {done}/{total}...")
+            progress_bar.progress(done / total)
+
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
+                for uploaded_file in uploaded_files:
+                    (tmp_path / uploaded_file.name).write_bytes(uploaded_file.getbuffer())
+                chunks = loader.load_documents(str(tmp_path))
                 if chunks:
-                    st.success(f"Ingested {len(chunks)} chunk(s) from {len(uploaded_files)} file(s).")
-                else:
-                    st.warning("No text could be extracted from the uploaded file(s).")
+                    progress_text.text(f"Embedding chunk 0/{len(chunks)}...")
+                    vector_store.add_documents(chunks, progress_callback=_on_progress)
+        except Exception as exc:
+            progress_text.empty()
+            progress_bar.empty()
+            st.error(f"Ingestion failed: {exc}")
+        else:
+            progress_text.empty()
+            progress_bar.empty()
+            if chunks:
+                st.success(f"Ingested {len(chunks)} chunk(s) from {len(uploaded_files)} file(s).")
+            else:
+                st.warning("No text could be extracted from the uploaded file(s).")
 
 # --- Main area: chat -------------------------------------------------------
 for message in st.session_state.messages:

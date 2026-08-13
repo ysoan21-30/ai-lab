@@ -5,12 +5,22 @@ provider) rather than Chroma's default local sentence-transformers model —
 no model weights are downloaded and no local inference runs.
 """
 
+import time
 import uuid
+from collections.abc import Callable
 
 import chromadb
 import voyageai
 
 from src.config import settings
+
+# Voyage AI's free tier caps requests at 3/minute and 10,000 tokens/minute.
+# Chunks are ~1000 characters (~250 tokens) by default, so a batch of 10
+# keeps each request to ~2500 tokens — well under the token cap even if
+# all 3 requests land in the same minute — while the delay between batches
+# keeps request frequency under the 3/minute cap.
+EMBED_BATCH_SIZE = 10
+EMBED_REQUEST_DELAY_SECONDS = 21  # a little over 60s / 3 requests, for margin
 
 
 class VoyageEmbeddingFunction:
@@ -88,26 +98,63 @@ def _make_id(chunk: dict) -> str:
     return str(uuid.uuid4())
 
 
-def add_documents(chunks: list[dict], collection=None) -> list[str]:
+def add_documents(
+    chunks: list[dict],
+    collection=None,
+    voyage_client=None,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> list[str]:
     """Embed (via Voyage AI, input_type="document") and upsert `chunks` into
     the collection.
 
     `chunks` is the list of {"text": ..., "metadata": {...}} dicts produced
-    by `src.ingestion.loader.load_documents`. Returns the list of IDs that
-    were upserted.
+    by `src.ingestion.loader.load_documents`. To respect Voyage's free-tier
+    rate limits, chunks are embedded in small batches (`EMBED_BATCH_SIZE`)
+    with a delay (`EMBED_REQUEST_DELAY_SECONDS`) between Voyage API calls —
+    embeddings are computed here and passed to `collection.upsert()`
+    explicitly, rather than relying on the collection's registered
+    embedding_function to embed everything in one uncontrolled call.
+
+    If given, `progress_callback(chunks_done, total_chunks)` is called after
+    each batch completes, so a caller (e.g. the Streamlit UI) can show
+    ingestion progress. Returns the list of IDs that were upserted.
     """
     if not chunks:
         return []
 
     collection = collection if collection is not None else get_collection()
+    voyage_client = voyage_client if voyage_client is not None else _get_voyage_client()
 
     ids = [_make_id(chunk) for chunk in chunks]
     documents = [chunk["text"] for chunk in chunks]
     metadatas = [chunk["metadata"] for chunk in chunks]
 
-    # The collection's registered embedding_function (VoyageEmbeddingFunction)
-    # embeds these with input_type="document" automatically.
-    collection.upsert(documents=documents, metadatas=metadatas, ids=ids)
+    total = len(chunks)
+    batch_starts = list(range(0, total, EMBED_BATCH_SIZE))
+
+    for batch_num, start in enumerate(batch_starts):
+        end = min(start + EMBED_BATCH_SIZE, total)
+
+        batch_embeddings = voyage_client.embed(
+            documents[start:end],
+            model=settings.voyage_embedding_model,
+            input_type="document",
+        ).embeddings
+
+        collection.upsert(
+            documents=documents[start:end],
+            metadatas=metadatas[start:end],
+            ids=ids[start:end],
+            embeddings=batch_embeddings,
+        )
+
+        if progress_callback is not None:
+            progress_callback(end, total)
+
+        is_last_batch = batch_num == len(batch_starts) - 1
+        if not is_last_batch:
+            time.sleep(EMBED_REQUEST_DELAY_SECONDS)
+
     return ids
 
 
