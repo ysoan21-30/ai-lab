@@ -1,0 +1,9 @@
+.env
+workspace/
+rag_store/
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.pyc
+.DS_Store
