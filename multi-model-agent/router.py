@@ -19,8 +19,8 @@ from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, qu
 from config import DEFAULT_TIER, ROUTER_MODEL, TIERS
 
 _DEEP_SIGNALS = re.compile(
-    r"\b(architect|prove|design a system|trade-?off|root cause|debug (a|the) "
-    r"(complex|subtle)|optimi[sz]e|strategy|multi-step plan|research paper)\b",
+    r"\b(architect|prove|design a system|trade-?offs?|root causes?|debug (a|the) "
+    r"(complex|subtle)|optimi[sz]e|strategy|multi-step plan|research papers?)\b",
     re.IGNORECASE,
 )
 _FAST_SIGNALS = re.compile(

@@ -86,7 +86,7 @@ async def load_dataset(args: dict[str, Any]) -> dict[str, Any]:
         lines.append("\nNumeric summary:")
         lines.append(numeric_df.describe().T.to_string())
 
-    categorical_cols = df.select_dtypes(include=["object", "category"]).columns[:10]
+    categorical_cols = df.select_dtypes(include=["object", "str", "category"]).columns[:10]
     if len(categorical_cols) > 0:
         lines.append("\nTop values for categorical columns (first 10):")
         for col in categorical_cols:
