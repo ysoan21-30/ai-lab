@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # Rate limiting
     rate_limit_per_minute: int = 60
 
+    # Background scheduler (polls ScheduledAnalysis rows in-process)
+    enable_scheduler: bool = True
+    scheduler_poll_seconds: int = 60
+
     # Notifications
     smtp_host: str = ""
     smtp_port: int = 587

@@ -1,5 +1,7 @@
 """FastAPI application entrypoint."""
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -16,16 +18,63 @@ from app.api import (
     rules_routes, schedule_routes, share_routes, team_routes, webhook_routes,
 )
 from app.core.config import settings
+from app.db.session import SessionLocal
+from app.services.scheduler_service import execute_scheduled_run, get_due_schedules
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai_data_profiler")
 
 limiter = Limiter(key_func=get_remote_address, default_limits=[f"{settings.rate_limit_per_minute}/minute"])
 
+
+def _run_due_schedules_once() -> None:
+    """Sync helper: poll for due ScheduledAnalysis rows and execute them.
+
+    Runs in a worker thread (via asyncio.to_thread) since the DB/profiling
+    pipeline underneath is synchronous.
+    """
+    db = SessionLocal()
+    try:
+        for schedule in get_due_schedules(db):
+            try:
+                execute_scheduled_run(db, schedule)
+            except Exception:
+                logger.exception("Scheduled run failed for schedule %s", schedule.id)
+    finally:
+        db.close()
+
+
+async def _scheduler_loop() -> None:
+    """Background poller for ScheduledAnalysis rows.
+
+    NOTE: this runs in-process. If you scale the backend to multiple replicas,
+    set ENABLE_SCHEDULER=false on all but one instance (or move this to a
+    dedicated worker/cron) to avoid the same due schedule running more than once.
+    """
+    while True:
+        try:
+            await asyncio.to_thread(_run_due_schedules_once)
+        except Exception:
+            logger.exception("Scheduler poll iteration failed")
+        await asyncio.sleep(settings.scheduler_poll_seconds)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = None
+    if settings.enable_scheduler:
+        task = asyncio.create_task(_scheduler_loop())
+        logger.info("Background scheduler started (poll every %ss)", settings.scheduler_poll_seconds)
+    yield
+    if task:
+        task.cancel()
+
+
 app = FastAPI(
     title="AI Data Profiler API",
     description="Upload a dataset, get an automated data-quality and ML-readiness report.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
