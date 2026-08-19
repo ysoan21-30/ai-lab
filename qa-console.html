@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Data Profiler — Manual QA Console</title>
+<style>
+  :root {
+    --ink: #0f172a;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --brand: #2563eb;
+    --brand-dark: #1d4ed8;
+    --green: #16a34a;
+    --red: #dc2626;
+    --amber: #ca8a04;
+    --orange: #ea580c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+  }
+  header {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  header h1 .logo {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 6px; background: var(--brand);
+    color: white; font-size: 11px; font-weight: 700;
+  }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 4px 10px; border-radius: 999px; font-weight: 600;
+  }
+  .status-ok { background: #dcfce7; color: #166534; }
+  .status-bad { background: #fee2e2; color: #991b1b; }
+  .status-unknown { background: #f1f5f9; color: #475569; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  .layout { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 57px); }
+  nav {
+    border-right: 1px solid var(--border);
+    background: var(--card);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  nav button.nav-item {
+    text-align: left;
+    background: none; border: none; padding: 10px 12px; border-radius: 8px;
+    font-size: 13.5px; color: var(--ink); cursor: pointer; font-weight: 500;
+  }
+  nav button.nav-item:hover { background: #f1f5f9; }
+  nav button.nav-item.active { background: #eff6ff; color: var(--brand-dark); }
+  nav .section-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--muted); margin: 14px 12px 4px; font-weight: 700;
+  }
+  nav .section-label:first-child { margin-top: 4px; }
+
+  main { padding: 24px; max-width: 1100px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; margin-bottom: 16px;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 15px; }
+  .card .desc { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+
+  label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; color: #334155; }
+  input[type=text], input[type=email], input[type=password], input[type=number], select, textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13.5px; margin-bottom: 12px; font-family: inherit; background: white;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid #bfdbfe; border-color: var(--brand); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 180px; }
+
+  button.btn {
+    background: var(--brand); color: white; border: none; padding: 9px 16px;
+    border-radius: 8px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  }
+  button.btn:hover { background: var(--brand-dark); }
+  button.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.btn-secondary {
+    background: white; color: var(--ink); border: 1px solid #cbd5e1;
+    padding: 9px 16px; border-radius: 8px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  }
+  button.btn-secondary:hover { background: #f8fafc; }
+  button.btn-danger { background: white; color: var(--red); border: 1px solid #fecaca; padding: 6px 12px; border-radius: 8px; font-size: 12.5px; cursor: pointer; font-weight: 600; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .badge-CRITICAL { background: #fee2e2; color: #991b1b; }
+  .badge-HIGH { background: #ffedd5; color: #9a3412; }
+  .badge-MEDIUM { background: #fef3c7; color: #92400e; }
+  .badge-LOW { background: #f1f5f9; color: #475569; }
+  .badge-ok { background: #dcfce7; color: #166534; }
+  .badge-fail { background: #fee2e2; color: #991b1b; }
+  .badge-info { background: #dbeafe; color: #1e40af; }
+
+  pre.log {
+    background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 12px;
+    font-size: 12px; max-height: 380px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+    font-family: "SF Mono", Menlo, Consolas, monospace; margin: 0;
+  }
+  .log-line { margin-bottom: 2px; }
+  .log-ts { color: #64748b; }
+  .log-ok { color: #4ade80; }
+  .log-err { color: #f87171; }
+  .log-info { color: #93c5fd; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; }
+  tr:hover td { background: #f8fafc; }
+
+  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 4px; }
+  .kv-item { background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .kv-item .val { font-size: 22px; font-weight: 700; }
+  .kv-item .lbl { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  .drop-zone {
+    border: 2px dashed #cbd5e1; border-radius: 12px; padding: 36px; text-align: center;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .drop-zone.drag { border-color: var(--brand); background: #eff6ff; }
+  .drop-zone p { margin: 4px 0; color: var(--muted); font-size: 13px; }
+
+  .issue-item { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+  .issue-item .issue-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .issue-item .issue-title { font-weight: 600; font-size: 13px; }
+  .issue-item .issue-detail { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .issue-item code.rec {
+    display: block; background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px;
+    font-size: 11.5px; margin-top: 6px; white-space: pre-wrap; word-break: break-word;
+  }
+
+  .assert-list { display: flex; flex-direction: column; gap: 6px; }
+  .assert-item { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 10px; border-radius: 6px; }
+  .assert-pass { background: #f0fdf4; }
+  .assert-fail { background: #fef2f2; }
+  .assert-icon { width: 16px; text-align: center; font-weight: 700; }
+  .assert-pass .assert-icon { color: var(--green); }
+  .assert-fail .assert-icon { color: var(--red); }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+  .score-ring-row { display: flex; gap: 24px; flex-wrap: wrap; }
+  .score-ring { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100px; }
+  .score-ring svg { width: 84px; height: 84px; }
+  .score-ring .num { font-size: 20px; font-weight: 700; }
+  .score-ring .lbl { font-size: 11px; color: var(--muted); text-align: center; text-transform: capitalize; }
+  .token-box {
+    font-family: monospace; font-size: 11px; background: #f1f5f9; padding: 6px 8px; border-radius: 6px;
+    word-break: break-all; max-height: 60px; overflow: auto;
+  }
+  .pill-select { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .pill-select button { border: 1px solid var(--border); background: white; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; cursor: pointer; }
+  .pill-select button.active { background: var(--brand); color: white; border-color: var(--brand); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="logo">AI</span> Data Profiler — Manual QA Console</h1>
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <input id="baseUrlInput" type="text" value="http://localhost:8000" style="width:230px; margin:0; padding:6px 10px; font-size:12.5px;" />
+    <span id="apiStatus" class="status-pill status-unknown"><span class="dot"></span> Checking...</span>
+    <span id="userStatus" class="status-pill status-unknown"><span class="dot"></span> No user</span>
+  </div>
+</header>
+
+<div class="layout">
+  <nav>
+    <div class="section-label">Setup</div>
+    <button class="nav-item active" data-panel="panel-connect">1. Connect &amp; Auth</button>
+
+    <div class="section-label">Core Flow</div>
+    <button class="nav-item" data-panel="panel-upload">2. Upload &amp; Analyze</button>
+    <button class="nav-item" data-panel="panel-report">3. View Report</button>
+    <button class="nav-item" data-panel="panel-dashboard">4. Dashboard / History</button>
+
+    <div class="section-label">Other Surfaces</div>
+    <button class="nav-item" data-panel="panel-usage">Usage &amp; Plan Limits</button>
+    <button class="nav-item" data-panel="panel-admin">Admin Dashboard</button>
+
+    <div class="section-label">Automated Checks</div>
+    <button class="nav-item" data-panel="panel-smoke">Smoke Test Suite</button>
+
+    <div class="section-label">Debug</div>
+    <button class="nav-item" data-panel="panel-log">Request Log</button>
+  </nav>
+
+  <main>
+
+    <!-- PANEL: Connect & Auth -->
+    <div class="panel active" id="panel-connect">
+      <div class="card">
+        <h2>API connection</h2>
+        <div class="desc">Point this at your running backend. Default assumes <code>uvicorn</code> or <code>docker compose</code> on port 8000.</div>
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="checkHealth()">Re-check /api/health</button>
+          <a href="#" onclick="openDocs(); return false;" class="btn-secondary" style="text-decoration:none; display:inline-flex; align-items:center;">Open Swagger docs (/docs)</a>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="card" style="flex:1;">
+          <h2>Register</h2>
+          <div class="desc">Creates a new Free-plan account.</div>
+          <label>Full name (optional)</label>
+          <input type="text" id="reg-name" placeholder="Test User" />
+          <label>Email</label>
+          <input type="email" id="reg-email" placeholder="tester@example.com" />
+          <label>Password</label>
+          <input type="password" id="reg-password" placeholder="At least 8 characters" value="TestPass123" />
+          <div class="btn-row">
+            <button class="btn" onclick="doRegister()">Register</button>
+            <button class="btn-secondary" onclick="fillRandomUser('reg')">Random email</button>
+          </div>
+        </div>
+
+        <div class="card" style="flex:1;">
+          <h2>Log in</h2>
+          <div class="desc">Use an existing account.</div>
+          <label>Email</label>
+          <input type="email" id="login-email" placeholder="tester@example.com" />
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="Password" />
+          <div class="btn-row">
+            <button class="btn" onclick="doLogin()">Log in</button>
+            <button class="btn-secondary" onclick="doLogout()">Log out</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Current session</h2>
+        <div id="currentUserBox" class="empty-state">Not logged in yet.</div>
+      </div>
+
+      <div class="card">
+        <h2>Negative-path checks (run manually)</h2>
+        <div class="desc">Quick buttons to confirm error handling — each shows the expected vs actual status code.</div>
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="testDuplicateRegister()">Register duplicate email (expect 409)</button>
+          <button class="btn-secondary" onclick="testWrongPassword()">Login wrong password (expect 401)</button>
+          <button class="btn-secondary" onclick="testNoAuth()">Call /me with no token (expect 401)</button>
+        </div>
+        <div id="authChecksResult" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- PANEL: Upload -->
+    <div class="panel" id="panel-upload">
+      <div class="card">
+        <h2>Upload a dataset</h2>
+        <div class="desc">Requires being logged in. Enforces plan upload-size limits and monthly usage limits server-side.</div>
+        <div class="drop-zone" id="dropZone">
+          <p style="font-weight:600; color:var(--ink);">Drag &amp; drop a CSV/XLSX here, or click to browse</p>
+          <p>or generate a synthetic messy dataset below to test detection logic</p>
+        </div>
+        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none;" />
+        <div class="divider"></div>
+        <div class="desc" style="margin-bottom:8px;">Or use a built-in sample dataset (generated client-side, no upload needed elsewhere):</div>
+        <div class="pill-select" id="samplePills">
+          <button class="active" data-sample="messy">Messy (missing/dupes/outliers/casing)</button>
+          <button data-sample="leakage">Leakage + correlation</button>
+          <button data-sample="imbalanced">Imbalanced target</button>
+          <button data-sample="clean">Clean dataset</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn" onclick="uploadSample()">Generate &amp; upload sample</button>
+        </div>
+        <div id="uploadStatus" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+    <!-- PANEL: Report -->
+    <div class="panel" id="panel-report">
+      <div class="card">
+        <h2>Load a report</h2>
+        <div class="row">
+          <div>
+            <label>Analysis ID</label>
+            <input type="text" id="reportIdInput" placeholder="paste an analysis id, or use 'Load latest'" />
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" onclick="loadReport()">Load report</button>
+          <button class="btn-secondary" onclick="loadLatestReport()">Load latest analysis</button>
+        </div>
+      </div>
+      <div id="reportContainer"></div>
+    </div>
+
+    <!-- PANEL: Dashboard -->
+    <div class="panel" id="panel-dashboard">
+      <div class="card">
+        <h2>Your analyses</h2>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button class="btn-secondary" onclick="loadDashboard()">Refresh</button>
+        </div>
+        <div id="dashboardTable"></div>
+      </div>
+    </div>
+
+    <!-- PANEL: Usage -->
+    <div class="panel" id="panel-usage">
+      <div class="card">
+        <h2>Usage &amp; plan limits</h2>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button class="btn-secondary" onclick="loadUsage()">Refresh usage</button>
+          <button class="btn-secondary" onclick="loadPlans()">Load public plan list</button>
+        </div>
+        <div id="usageBox"></div>
+        <div class="divider"></div>
+        <div id="plansBox"></div>
+      </div>
+    </div>
+
+    <!-- PANEL: Admin -->
+    <div class="panel" id="panel-admin">
+      <div class="card">
+        <h2>Admin dashboard</h2>
+        <div class="desc">Requires the current user to have <code>is_admin=true</code>. Promote a user from the backend host with:
+          <code>python scripts/create_admin.py you@example.com yourpassword</code>, then log in as that user here.
+        </div>
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="loadAdminOverview()">Load /api/admin/overview</button>
+        </div>
+        <div id="adminBox" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+    <!-- PANEL: Smoke test -->
+    <div class="panel" id="panel-smoke">
+      <div class="card">
+        <h2>Automated smoke test suite</h2>
+        <div class="desc">
+          Runs a scripted sequence against the live API: register → login checks → upload a synthetic messy
+          dataset → verify detected issues → manual target override → exports → ownership isolation → duplicate
+          email rejection. Each step asserts an expected outcome. Safe to re-run; it always creates fresh random
+          test users so it won't collide with your own account or eat into its usage limits.
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="smokeRunBtn" onclick="runSmokeTest()">Run full smoke test</button>
+        </div>
+        <div id="smokeResult" style="margin-top:16px;"></div>
+      </div>
+    </div>
+
+    <!-- PANEL: Log -->
+    <div class="panel" id="panel-log">
+      <div class="card">
+        <h2>Request log</h2>
+        <div class="desc">Every API call made from this console, most recent last.</div>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button class="btn-secondary" onclick="clearLog()">Clear log</button>
+        </div>
+        <pre class="log" id="logBox"></pre>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+/* ---------------------------------------------------------------------- *
+ * State
+ * ---------------------------------------------------------------------- */
+let state = {
+  accessToken: null,
+  refreshToken: null,
+  user: null,
+  lastAnalysisId: null,
+};
+
+function baseUrl() {
+  return document.getElementById('baseUrlInput').value.replace(/\/$/, '');
+}
+
+/* ---------------------------------------------------------------------- *
+ * Logging
+ * ---------------------------------------------------------------------- */
+function log(kind, msg) {
+  const box = document.getElementById('logBox');
+  const ts = new Date().toLocaleTimeString();
+  const cls = kind === 'ok' ? 'log-ok' : kind === 'err' ? 'log-err' : 'log-info';
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-ts">[${ts}]</span> <span class="${cls}">${escapeHtml(msg)}</span>`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+function clearLog() { document.getElementById('logBox').innerHTML = ''; }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------------------------------------------------------------------- *
+ * Core fetch wrapper
+ * ---------------------------------------------------------------------- */
+async function api(method, path, { body, isForm, auth = true } = {}) {
+  const url = baseUrl() + path;
+  const headers = {};
+  if (auth && state.accessToken) headers['Authorization'] = `Bearer ${state.accessToken}`;
+  if (!isForm && body !== undefined) headers['Content-Type'] = 'application/json';
+
+  log('info', `${method} ${path}`);
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body === undefined ? undefined : (isForm ? body : JSON.stringify(body)),
+    });
+  } catch (err) {
+    log('err', `${method} ${path} -> network error: ${err.message} (is the backend running and reachable at ${baseUrl()}? CORS/mixed-content issues also land here)`);
+    throw err;
+  }
+
+  let data = null;
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    data = await res.json().catch(() => null);
+  } else {
+    data = await res.blob().catch(() => null);
+  }
+
+  if (res.ok) {
+    log('ok', `${method} ${path} -> ${res.status}`);
+  } else {
+    const detail = data && data.detail ? JSON.stringify(data.detail) : '';
+    log('err', `${method} ${path} -> ${res.status} ${detail}`);
+  }
+
+  return { status: res.status, ok: res.ok, data };
+}
+
+/* ---------------------------------------------------------------------- *
+ * Health check
+ * ---------------------------------------------------------------------- */
+async function checkHealth() {
+  const pill = document.getElementById('apiStatus');
+  pill.className = 'status-pill status-unknown';
+  pill.innerHTML = '<span class="dot"></span> Checking...';
+  try {
+    const { ok, data } = await api('GET', '/api/health', { auth: false });
+    if (ok) {
+      pill.className = 'status-pill status-ok';
+      pill.innerHTML = '<span class="dot"></span> API reachable';
+    } else {
+      pill.className = 'status-pill status-bad';
+      pill.innerHTML = '<span class="dot"></span> API error';
+    }
+  } catch {
+    pill.className = 'status-pill status-bad';
+    pill.innerHTML = '<span class="dot"></span> Unreachable';
+  }
+}
+function openDocs() { window.open(baseUrl() + '/docs', '_blank'); }
+
+/* ---------------------------------------------------------------------- *
+ * Navigation
+ * ---------------------------------------------------------------------- */
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.panel).classList.add('active');
+  });
+});
+
+/* ---------------------------------------------------------------------- *
+ * Auth
+ * ---------------------------------------------------------------------- */
+function fillRandomUser(prefix) {
+  const rand = Math.random().toString(36).slice(2, 8);
+  document.getElementById(`${prefix}-email`).value = `qa-${rand}@example.com`;
+  if (prefix === 'reg') document.getElementById('reg-password').value = 'TestPass123';
+}
+
+function setSession(data) {
+  state.accessToken = data.access_token;
+  state.refreshToken = data.refresh_token;
+  state.user = data.user;
+  renderUserStatus();
+}
+
+function renderUserStatus() {
+  const pill = document.getElementById('userStatus');
+  const box = document.getElementById('currentUserBox');
+  if (state.user) {
+    pill.className = 'status-pill status-ok';
+    pill.innerHTML = `<span class="dot"></span> ${state.user.email} (${state.user.plan})`;
+    box.innerHTML = `
+      <div class="kv">
+        <div class="kv-item"><div class="val">${escapeHtml(state.user.email)}</div><div class="lbl">Email</div></div>
+        <div class="kv-item"><div class="val">${state.user.plan}</div><div class="lbl">Plan</div></div>
+        <div class="kv-item"><div class="val">${state.user.is_admin ? 'Yes' : 'No'}</div><div class="lbl">Admin</div></div>
+        <div class="kv-item"><div class="val">${escapeHtml(state.user.id.slice(0,8))}...</div><div class="lbl">User ID</div></div>
+      </div>
+      <div class="divider"></div>
+      <label>Access token</label>
+      <div class="token-box">${escapeHtml(state.accessToken)}</div>
+    `;
+  } else {
+    pill.className = 'status-pill status-unknown';
+    pill.innerHTML = '<span class="dot"></span> No user';
+    box.innerHTML = '<div class="empty-state">Not logged in yet.</div>';
+  }
+}
+
+async function doRegister() {
+  const full_name = document.getElementById('reg-name').value || undefined;
+  const email = document.getElementById('reg-email').value;
+  const password = document.getElementById('reg-password').value;
+  if (!email || !password) { alert('Email and password required.'); return; }
+  const { ok, data } = await api('POST', '/api/auth/register', { body: { email, password, full_name }, auth: false });
+  if (ok) { setSession(data); alert('Registered and logged in as ' + email); }
+  else { alert('Register failed: ' + JSON.stringify(data)); }
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+  const { ok, data } = await api('POST', '/api/auth/login', { body: { email, password }, auth: false });
+  if (ok) { setSession(data); alert('Logged in as ' + email); }
+  else { alert('Login failed: ' + JSON.stringify(data)); }
+}
+
+function doLogout() {
+  state.accessToken = null; state.refreshToken = null; state.user = null;
+  renderUserStatus();
+  log('info', 'Logged out (client-side token cleared).');
+}
+
+async function testDuplicateRegister() {
+  if (!state.user) { alert('Register/login first so there is an email to duplicate.'); return; }
+  const { status } = await api('POST', '/api/auth/register', { body: { email: state.user.email, password: 'TestPass123' }, auth: false });
+  renderAssertResult('authChecksResult', 'Duplicate register', status === 409, `expected 409, got ${status}`);
+}
+async function testWrongPassword() {
+  if (!state.user) { alert('Register/login first.'); return; }
+  const { status } = await api('POST', '/api/auth/login', { body: { email: state.user.email, password: 'definitely-wrong' }, auth: false });
+  renderAssertResult('authChecksResult', 'Wrong password login', status === 401, `expected 401, got ${status}`);
+}
+async function testNoAuth() {
+  const prevToken = state.accessToken;
+  state.accessToken = null;
+  const { status } = await api('GET', '/api/auth/me', { auth: true });
+  state.accessToken = prevToken;
+  renderAssertResult('authChecksResult', 'GET /me with no token', status === 401, `expected 401, got ${status}`);
+}
+function renderAssertResult(containerId, label, passed, note) {
+  const el = document.getElementById(containerId);
+  const item = document.createElement('div');
+  item.className = 'assert-item ' + (passed ? 'assert-pass' : 'assert-fail');
+  item.innerHTML = `<span class="assert-icon">${passed ? '✓' : '✗'}</span> <strong>${escapeHtml(label)}</strong> — ${escapeHtml(note)}`;
+  el.prepend(item);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Sample dataset generation (client-side CSV builders)
+ * ---------------------------------------------------------------------- */
+function randChoice(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function randNormal(mean, std) {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function buildSampleCsv(kind) {
+  const rows = [];
+  const n = 400;
+  if (kind === 'messy') {
+    rows.push(['customer_id', 'age', 'income', 'gender', 'plan_type', 'churned'].join(','));
+    for (let i = 0; i < n; i++) {
+      const age = i < 20 ? '' : (i === 5 ? -8 : Math.round(randNormal(40, 12)));
+      const income = Math.round(randNormal(55000, 15000));
+      const gender = randChoice(['Male', 'male', 'MALE', 'Female', 'female']);
+      rows.push([i + 1, age, income, gender, 'basic', Math.random() < 0.08 ? 1 : 0].join(','));
+    }
+    for (let i = 0; i < 12; i++) rows.push(rows[i + 1]); // duplicate rows
+  } else if (kind === 'leakage') {
+    rows.push(['id', 'leaky_feature', 'post_processing_flag', 'age', 'churned'].join(','));
+    for (let i = 0; i < n; i++) {
+      const target = Math.random() < 0.35 ? 1 : 0;
+      const leaky = (target + randNormal(0, 0.001)).toFixed(4);
+      rows.push([i, leaky, randChoice(['a', 'b']), Math.round(randNormal(40, 10)), target].join(','));
+    }
+  } else if (kind === 'imbalanced') {
+    rows.push(['id', 'feature1', 'feature2', 'label'].join(','));
+    for (let i = 0; i < n; i++) {
+      rows.push([i, randNormal(0, 1).toFixed(3), randNormal(5, 2).toFixed(3), Math.random() < 0.03 ? 'yes' : 'no'].join(','));
+    }
+  } else {
+    rows.push(['id', 'age', 'department', 'salary'].join(','));
+    for (let i = 0; i < n; i++) {
+      rows.push([i, Math.round(randNormal(40, 10)), randChoice(['Engineering', 'Sales', 'Marketing']), Math.round(randNormal(60000, 10000))].join(','));
+    }
+  }
+  return rows.join('\n');
+}
+
+document.querySelectorAll('#samplePills button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#samplePills button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+async function uploadSample() {
+  const kind = document.querySelector('#samplePills button.active').dataset.sample;
+  const csv = buildSampleCsv(kind);
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const file = new File([blob], `sample_${kind}.csv`, { type: 'text/csv' });
+  await doUpload(file);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Upload
+ * ---------------------------------------------------------------------- */
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) doUpload(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) doUpload(fileInput.files[0]); });
+
+async function doUpload(file) {
+  if (!state.accessToken) { alert('Register or log in first (see panel 1).'); return; }
+  const statusBox = document.getElementById('uploadStatus');
+  statusBox.innerHTML = `<div class="muted">Uploading &amp; analyzing <strong>${escapeHtml(file.name)}</strong> (${(file.size/1024).toFixed(1)} KB)...</div>`;
+  const form = new FormData();
+  form.append('file', file);
+  const { ok, status, data } = await api('POST', '/api/analyses', { body: form, isForm: true });
+  if (ok) {
+    state.lastAnalysisId = data.id;
+    statusBox.innerHTML = `
+      <div class="assert-item assert-pass"><span class="assert-icon">✓</span> Analysis completed — id <code>${data.id}</code></div>
+      <div class="kv" style="margin-top:10px;">
+        <div class="kv-item"><div class="val">${data.row_count ?? '—'}</div><div class="lbl">Rows</div></div>
+        <div class="kv-item"><div class="val">${data.column_count ?? '—'}</div><div class="lbl">Columns</div></div>
+        <div class="kv-item"><div class="val">${data.quality_score ?? '—'}</div><div class="lbl">Quality score</div></div>
+        <div class="kv-item"><div class="val">${data.ml_readiness_score ?? '—'}</div><div class="lbl">ML readiness</div></div>
+        <div class="kv-item"><div class="val">${data.issue_count ?? '—'}</div><div class="lbl">Issues found</div></div>
+      </div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn" onclick="document.getElementById('reportIdInput').value='${data.id}'; switchPanel('panel-report'); loadReport();">View full report</button>
+      </div>
+    `;
+  } else {
+    statusBox.innerHTML = `<div class="assert-item assert-fail"><span class="assert-icon">✗</span> Upload failed (${status}): ${escapeHtml(JSON.stringify(data && data.detail))}</div>`;
+  }
+}
+
+function switchPanel(id) {
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.panel === id));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === id));
+}
+
+/* ---------------------------------------------------------------------- *
+ * Report viewer
+ * ---------------------------------------------------------------------- */
+async function loadLatestReport() {
+  if (!state.accessToken) { alert('Log in first.'); return; }
+  const { ok, data } = await api('GET', '/api/analyses');
+  if (ok && data.length) {
+    document.getElementById('reportIdInput').value = data[0].id;
+    loadReport();
+  } else {
+    document.getElementById('reportContainer').innerHTML = '<div class="empty-state">No analyses yet — upload one first.</div>';
+  }
+}
+
+async function loadReport() {
+  const id = document.getElementById('reportIdInput').value.trim();
+  if (!id) { alert('Enter an analysis ID, or click "Load latest".'); return; }
+  const { ok, status, data } = await api('GET', `/api/analyses/${id}`);
+  const container = document.getElementById('reportContainer');
+  if (!ok) {
+    container.innerHTML = `<div class="card"><div class="assert-item assert-fail"><span class="assert-icon">✗</span> Failed to load (${status}): ${escapeHtml(JSON.stringify(data && data.detail))}</div></div>`;
+    return;
+  }
+  state.lastAnalysisId = id;
+  container.innerHTML = renderReport(data);
+}
+
+function scoreColor(score) {
+  if (score >= 80) return '#16a34a';
+  if (score >= 60) return '#ca8a04';
+  return '#dc2626';
+}
+function scoreRing(label, score) {
+  const s = score ?? 0;
+  const circumference = 2 * Math.PI * 34;
+  const offset = circumference - (s / 100) * circumference;
+  return `
+    <div class="score-ring">
+      <svg viewBox="0 0 80 80">
+        <circle cx="40" cy="40" r="34" fill="none" stroke="#e2e8f0" stroke-width="7"/>
+        <circle cx="40" cy="40" r="34" fill="none" stroke="${scoreColor(s)}" stroke-width="7"
+          stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"
+          transform="rotate(-90 40 40)"/>
+        <text x="40" y="46" text-anchor="middle" font-size="20" font-weight="700" fill="${scoreColor(s)}">${Math.round(s)}</text>
+      </svg>
+      <div class="lbl">${escapeHtml(label.replace(/_/g,' '))}</div>
+    </div>`;
+}
+
+function renderReport(d) {
+  if (d.status === 'failed') {
+    return `<div class="card"><div class="assert-item assert-fail"><span class="assert-icon">✗</span> Analysis failed: ${escapeHtml(d.error_message||'')}</div></div>`;
+  }
+  const readiness = d.ml_readiness_result || {};
+  const breakdown = readiness.breakdown || {};
+  const ai = d.ai_insights || {};
+  const issues = (d.quality_result && d.quality_result.issues) || [];
+  const target = d.target_result || {};
+  const highCorr = (d.correlation_result && d.correlation_result.high_correlation_pairs) || [];
+  const leakage = target.leakage_warnings || [];
+
+  let html = `
+  <div class="card">
+    <h2>${escapeHtml(d.dataset_name)}</h2>
+    <div class="desc">${d.row_count ?? '—'} rows · ${d.column_count ?? '—'} columns · id <code>${d.id}</code></div>
+    <div class="score-ring-row">
+      ${scoreRing('Quality Score', d.quality_score)}
+      ${scoreRing('ML Readiness', d.ml_readiness_score)}
+      ${Object.entries(breakdown).map(([k,v]) => scoreRing(k, v)).join('')}
+    </div>
+    <div class="btn-row" style="margin-top:16px;">
+      <button class="btn-secondary" onclick="downloadExport('${d.id}','json','${d.dataset_name}.json')">Export JSON</button>
+      <button class="btn-secondary" onclick="downloadExport('${d.id}','csv','${d.dataset_name}_issues.csv')">Export CSV</button>
+      <button class="btn-secondary" onclick="downloadExport('${d.id}','pdf','${d.dataset_name}_report.pdf')">Export PDF (Pro/Team only)</button>
+    </div>
+  </div>`;
+
+  html += `
+  <div class="card">
+    <h2>Target column</h2>
+    <div class="desc">${escapeHtml(target.note || '')}</div>
+    <div class="kv">
+      <div class="kv-item"><div class="val">${escapeHtml(target.most_likely_target || '—')}</div><div class="lbl">Detected target</div></div>
+      <div class="kv-item"><div class="val">${target.confidence ?? '—'}</div><div class="lbl">Confidence</div></div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <div>
+        <label>Override target column</label>
+        <input type="text" id="targetOverrideInput" placeholder="exact column name" />
+      </div>
+    </div>
+    <button class="btn-secondary" onclick="overrideTarget('${d.id}')">Set target</button>
+    ${target.class_imbalance ? `<div style="margin-top:10px;"><span class="badge badge-${target.class_imbalance.severity}">${target.class_imbalance.severity}</span> class imbalance — ratio ${target.class_imbalance.imbalance_ratio}:1. ${escapeHtml(target.class_imbalance.recommendation)}</div>` : ''}
+  </div>`;
+
+  if (leakage.length) {
+    html += `<div class="card"><h2>Potential data leakage</h2>` +
+      leakage.map(w => `<div class="issue-item"><div class="issue-detail">${escapeHtml(w.message)}</div></div>`).join('') +
+      `</div>`;
+  }
+
+  if (highCorr.length) {
+    html += `<div class="card"><h2>High correlation pairs (|r| ≥ ${d.correlation_result.threshold})</h2><table><thead><tr><th>Column A</th><th>Column B</th><th>Pearson</th></tr></thead><tbody>` +
+      highCorr.map(p => `<tr><td>${escapeHtml(p.column_a)}</td><td>${escapeHtml(p.column_b)}</td><td>${p.pearson}</td></tr>`).join('') +
+      `</tbody></table></div>`;
+  }
+
+  if (ai.executive_summary) {
+    html += `
+    <div class="card">
+      <h2>AI-generated insights ${ai._meta && ai._meta.source === 'fallback_rules_based' ? '<span class="badge badge-info">rules-based fallback (no LLM key)</span>' : '<span class="badge badge-ok">LLM-generated</span>'}</h2>
+      <p>${escapeHtml(ai.executive_summary)}</p>
+      ${renderList('Recommended cleaning steps', ai.recommended_cleaning_steps)}
+      ${renderList('Recommended next steps', ai.recommended_next_steps)}
+      ${renderList('Feature engineering suggestions', ai.feature_engineering_suggestions)}
+      ${renderList('Potential modeling concerns', ai.potential_modeling_concerns)}
+    </div>`;
+  }
+
+  html += `
+  <div class="card">
+    <h2>Data quality issues (${issues.length})</h2>
+    ${issues.length === 0 ? '<div class="empty-state">No issues detected.</div>' : issues.map(i => `
+      <div class="issue-item">
+        <div class="issue-top">
+          <span class="issue-title">${i.column ? escapeHtml(i.column) + ' — ' : ''}${escapeHtml(i.type.replace(/_/g,' '))}</span>
+          <span class="badge badge-${i.severity}">${i.severity}</span>
+        </div>
+        <div class="issue-detail">${escapeHtml(i.detail)}</div>
+        ${i.recommendation ? `<code class="rec">${escapeHtml(i.recommendation)}</code>` : ''}
+      </div>
+    `).join('')}
+  </div>`;
+
+  return html;
+}
+function renderList(title, items) {
+  if (!items || !items.length) return '';
+  return `<div style="margin-top:12px;"><strong style="font-size:12.5px;">${title}</strong><ul style="margin:6px 0; padding-left:20px; font-size:13px;">${items.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul></div>`;
+}
+
+async function overrideTarget(id) {
+  const column = document.getElementById('targetOverrideInput').value.trim();
+  if (!column) { alert('Enter a column name.'); return; }
+  const { ok, data, status } = await api('POST', `/api/analyses/${id}/target`, { body: { column } });
+  if (ok) { alert(`Target set to '${data.target_result.most_likely_target}' (confidence ${data.target_result.confidence}). Reloading report...`); loadReport(); }
+  else alert(`Failed (${status}): ${JSON.stringify(data && data.detail)}`);
+}
+
+async function downloadExport(id, kind, filename) {
+  const url = `${baseUrl()}/api/analyses/${id}/export/${kind}`;
+  log('info', `GET /api/analyses/${id}/export/${kind}`);
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${state.accessToken}` } });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      log('err', `Export failed: ${res.status} ${JSON.stringify(body.detail || '')}`);
+      alert(`Export failed (${res.status}): ${body.detail || 'unknown error'}`);
+      return;
+    }
+    const blob = await res.blob();
+    const dl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = dl; a.download = filename; a.click();
+    URL.revokeObjectURL(dl);
+    log('ok', `Downloaded ${filename}`);
+  } catch (err) {
+    log('err', `Export error: ${err.message}`);
+  }
+}
+
+/* ---------------------------------------------------------------------- *
+ * Dashboard
+ * ---------------------------------------------------------------------- */
+async function loadDashboard() {
+  if (!state.accessToken) { alert('Log in first.'); return; }
+  const { ok, data } = await api('GET', '/api/analyses');
+  const el = document.getElementById('dashboardTable');
+  if (!ok) { el.innerHTML = '<div class="empty-state">Failed to load.</div>'; return; }
+  if (!data.length) { el.innerHTML = '<div class="empty-state">No analyses yet.</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Dataset</th><th>Status</th><th>Rows</th><th>Quality</th><th>ML Readiness</th><th>Issues</th><th>Created</th><th></th></tr></thead><tbody>` +
+    data.map(a => `<tr>
+      <td>${escapeHtml(a.dataset_name)}</td>
+      <td><span class="badge ${a.status === 'completed' ? 'badge-ok' : a.status === 'failed' ? 'badge-fail' : 'badge-info'}">${a.status}</span></td>
+      <td>${a.row_count ?? '—'}</td>
+      <td>${a.quality_score ?? '—'}</td>
+      <td>${a.ml_readiness_score ?? '—'}</td>
+      <td>${a.issue_count ?? '—'}</td>
+      <td class="small muted">${new Date(a.created_at).toLocaleString()}</td>
+      <td><button class="btn-secondary" style="padding:4px 10px; font-size:12px;" onclick="document.getElementById('reportIdInput').value='${a.id}'; switchPanel('panel-report'); loadReport();">View</button></td>
+    </tr>`).join('') + `</tbody></table>`;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Usage / Plans
+ * ---------------------------------------------------------------------- */
+async function loadUsage() {
+  if (!state.accessToken) { alert('Log in first.'); return; }
+  const { ok, data } = await api('GET', '/api/analyses/usage');
+  const el = document.getElementById('usageBox');
+  if (!ok) { el.innerHTML = '<div class="empty-state">Failed to load.</div>'; return; }
+  el.innerHTML = `<div class="kv">
+    <div class="kv-item"><div class="val">${data.plan}</div><div class="lbl">Plan</div></div>
+    <div class="kv-item"><div class="val">${data.analyses_used_this_month} / ${data.analyses_limit}</div><div class="lbl">Analyses this month</div></div>
+    <div class="kv-item"><div class="val">${data.max_upload_mb} MB</div><div class="lbl">Max upload size</div></div>
+  </div>`;
+}
+async function loadPlans() {
+  const { ok, data } = await api('GET', '/api/billing/plans', { auth: false });
+  const el = document.getElementById('plansBox');
+  if (!ok) { el.innerHTML = '<div class="empty-state">Failed to load.</div>'; return; }
+  el.innerHTML = `<h2 style="margin-top:0;">Public plan list</h2><div class="row">` +
+    Object.entries(data).map(([tier, cfg]) => `
+      <div class="card" style="flex:1; min-width:200px;">
+        <h2>${cfg.name}</h2>
+        <div class="desc">₹${cfg.price_inr}/mo · ${cfg.analyses_per_month} analyses · ${cfg.max_upload_mb}MB max</div>
+        <ul style="padding-left:18px; font-size:12.5px;">${cfg.features.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
+      </div>`).join('') + `</div>`;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Admin
+ * ---------------------------------------------------------------------- */
+async function loadAdminOverview() {
+  if (!state.accessToken) { alert('Log in as an admin user first.'); return; }
+  const { ok, status, data } = await api('GET', '/api/admin/overview');
+  const el = document.getElementById('adminBox');
+  if (!ok) {
+    el.innerHTML = `<div class="assert-item assert-fail"><span class="assert-icon">✗</span> ${status === 403 ? 'Access denied — current user is not an admin (expected if testing 403 handling).' : 'Failed to load ('+status+').'}</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="kv">
+      <div class="kv-item"><div class="val">${data.total_users}</div><div class="lbl">Total users</div></div>
+      <div class="kv-item"><div class="val">${data.active_users_30d}</div><div class="lbl">Active (30d)</div></div>
+      <div class="kv-item"><div class="val">${data.total_analyses}</div><div class="lbl">Total analyses</div></div>
+      <div class="kv-item"><div class="val">${data.error_count}</div><div class="lbl">Errors</div></div>
+      <div class="kv-item"><div class="val">${data.avg_processing_time_ms ?? '—'} ms</div><div class="lbl">Avg processing time</div></div>
+      <div class="kv-item"><div class="val">₹${data.estimated_mrr_inr}</div><div class="lbl">Estimated MRR</div></div>
+      <div class="kv-item"><div class="val">$${data.total_llm_cost_usd}</div><div class="lbl">Total LLM cost</div></div>
+    </div>
+    <div class="divider"></div>
+    <strong style="font-size:12.5px;">Subscriptions by plan</strong>
+    <table style="margin-top:6px;"><tbody>${Object.entries(data.subscription_counts).map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</tbody></table>
+  `;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Smoke test suite
+ * ---------------------------------------------------------------------- */
+async function runSmokeTest() {
+  const btn = document.getElementById('smokeRunBtn');
+  const resultEl = document.getElementById('smokeResult');
+  btn.disabled = true;
+  resultEl.innerHTML = '<div class="muted">Running...</div>';
+  const results = [];
+  const assert = (label, passed, note) => { results.push({ label, passed, note }); renderSmokeResults(results); };
+
+  const rand = Math.random().toString(36).slice(2, 8);
+  const email = `smoke-${rand}@example.com`;
+  const password = 'SmokePass123';
+  let token = null, analysisId = null;
+
+  try {
+    // 1. Register
+    let r = await api('POST', '/api/auth/register', { body: { email, password }, auth: false });
+    assert('Register new user', r.ok && r.status === 201, `status ${r.status}`);
+    token = r.data && r.data.access_token;
+
+    // 2. Duplicate register rejected
+    r = await api('POST', '/api/auth/register', { body: { email, password }, auth: false });
+    assert('Duplicate register rejected', r.status === 409, `status ${r.status}`);
+
+    // 3. Wrong password rejected
+    r = await api('POST', '/api/auth/login', { body: { email, password: 'wrong-password' }, auth: false });
+    assert('Wrong password rejected', r.status === 401, `status ${r.status}`);
+
+    // 4. /me works with token
+    const savedToken = state.accessToken;
+    state.accessToken = token;
+    r = await api('GET', '/api/auth/me');
+    assert('GET /me returns correct user', r.ok && r.data.email === email, `status ${r.status}, email ${r.data && r.data.email}`);
+
+    // 5. Upload unsupported extension rejected
+    const badFile = new File([new Blob(['hello'])], 'bad.txt', { type: 'text/plain' });
+    const badForm = new FormData(); badForm.append('file', badFile);
+    r = await api('POST', '/api/analyses', { body: badForm, isForm: true });
+    assert('Unsupported file extension rejected', r.status === 400, `status ${r.status}`);
+
+    // 6. Upload empty file rejected
+    const emptyFile = new File([new Blob([''])], 'empty.csv', { type: 'text/csv' });
+    const emptyForm = new FormData(); emptyForm.append('file', emptyFile);
+    r = await api('POST', '/api/analyses', { body: emptyForm, isForm: true });
+    assert('Empty file rejected', r.status === 422, `status ${r.status}`);
+
+    // 7. Upload real messy dataset
+    const csv = buildSampleCsv('messy');
+    const file = new File([new Blob([csv])], 'smoke_messy.csv', { type: 'text/csv' });
+    const form = new FormData(); form.append('file', file);
+    r = await api('POST', '/api/analyses', { body: form, isForm: true });
+    assert('Upload + analyze messy dataset', r.ok && r.data.status === 'completed', `status ${r.status}`);
+    analysisId = r.data && r.data.id;
+
+    if (analysisId) {
+      // 8. Quality issues detected
+      r = await api('GET', `/api/analyses/${analysisId}`);
+      const issueCount = r.data && r.data.quality_result && r.data.quality_result.total_issues;
+      assert('Quality issues detected on messy dataset', issueCount > 0, `found ${issueCount} issues`);
+
+      const hasMissing = r.data.quality_result.issues.some(i => i.type === 'missing_values');
+      assert('Missing-value issue detected', hasMissing, hasMissing ? 'found' : 'not found');
+
+      const hasDupes = r.data.quality_result.issues.some(i => i.type === 'duplicate_rows');
+      assert('Duplicate-rows issue detected', hasDupes, hasDupes ? 'found' : 'not found');
+
+      // 9. ML readiness score in range
+      const score = r.data.ml_readiness_score;
+      assert('ML readiness score in [0,100]', score >= 0 && score <= 100, `score ${score}`);
+
+      // 10. Target override persists across a fresh request
+      const columns = r.data.profile_result.column_profiles.map(c => c.column);
+      const overrideCol = columns[columns.length - 1];
+      r = await api('POST', `/api/analyses/${analysisId}/target`, { body: { column: overrideCol } });
+      const setOk = r.ok && r.data.target_result.most_likely_target === overrideCol && r.data.target_result.confidence === 1;
+      assert('Target override accepted', setOk, `set to ${r.data && r.data.target_result && r.data.target_result.most_likely_target}`);
+
+      r = await api('GET', `/api/analyses/${analysisId}`);
+      const persisted = r.data.target_result.most_likely_target === overrideCol && r.data.target_result.confidence === 1;
+      assert('Target override persists on fresh fetch (regression check)', persisted, persisted ? 'confirmed persisted' : `reverted to ${r.data.target_result.most_likely_target}`);
+
+      // 11. Invalid target column rejected
+      r = await api('POST', `/api/analyses/${analysisId}/target`, { body: { column: 'does_not_exist_xyz' } });
+      assert('Invalid target column rejected', r.status === 400, `status ${r.status}`);
+
+      // 12. CSV export works
+      const csvUrl = `${baseUrl()}/api/analyses/${analysisId}/export/csv`;
+      const csvRes = await fetch(csvUrl, { headers: { Authorization: `Bearer ${token}` } });
+      assert('CSV export succeeds', csvRes.ok, `status ${csvRes.status}`);
+
+      // 13. PDF export blocked on Free plan
+      const pdfUrl = `${baseUrl()}/api/analyses/${analysisId}/export/pdf`;
+      const pdfRes = await fetch(pdfUrl, { headers: { Authorization: `Bearer ${token}` } });
+      assert('PDF export blocked on Free plan (402)', pdfRes.status === 402, `status ${pdfRes.status}`);
+    }
+
+    // 14. Cross-user ownership isolation
+    const rand2 = Math.random().toString(36).slice(2, 8);
+    r = await api('POST', '/api/auth/register', { body: { email: `smoke2-${rand2}@example.com`, password }, auth: false });
+    const token2 = r.data && r.data.access_token;
+    if (analysisId && token2) {
+      state.accessToken = token2;
+      r = await api('GET', `/api/analyses/${analysisId}`);
+      assert("Other user can't access this analysis (404)", r.status === 404, `status ${r.status}`);
+    }
+
+    state.accessToken = savedToken;
+
+    // 15. Usage limit enforcement (3 more uploads to hit Free plan cap)
+    state.accessToken = token;
+    let usageOk = true, lastStatus = null;
+    for (let i = 0; i < 3; i++) {
+      const f2 = new File([new Blob([buildSampleCsv('clean')])], `usage_${i}.csv`, { type: 'text/csv' });
+      const fd2 = new FormData(); fd2.append('file', f2);
+      const ur = await api('POST', '/api/analyses', { body: fd2, isForm: true });
+      lastStatus = ur.status;
+    }
+    // This user already used 1 upload above (#7), so 3 more should push past the free limit of 3.
+    assert('Usage limit enforced after exceeding Free plan cap', lastStatus === 402, `last upload status ${lastStatus} (expect 402 once limit exceeded)`);
+
+  } catch (err) {
+    assert('Unexpected exception during smoke test', false, err.message);
+  } finally {
+    state.accessToken = null; // restore console to logged-out state; user can log back in via panel 1
+    renderUserStatus();
+    btn.disabled = false;
+  }
+}
+
+function renderSmokeResults(results) {
+  const passed = results.filter(r => r.passed).length;
+  const el = document.getElementById('smokeResult');
+  el.innerHTML = `
+    <div class="kv" style="margin-bottom:12px;">
+      <div class="kv-item"><div class="val">${passed} / ${results.length}</div><div class="lbl">Assertions passed</div></div>
+    </div>
+    <div class="assert-list">
+      ${results.map(r => `<div class="assert-item ${r.passed ? 'assert-pass' : 'assert-fail'}"><span class="assert-icon">${r.passed ? '✓' : '✗'}</span> <strong>${escapeHtml(r.label)}</strong> — ${escapeHtml(r.note)}</div>`).join('')}
+    </div>
+  `;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Init
+ * ---------------------------------------------------------------------- */
+renderUserStatus();
+checkHealth();
+</script>
+</body>
+</html>
