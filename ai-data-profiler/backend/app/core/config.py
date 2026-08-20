@@ -1,13 +1,40 @@
 """Application configuration loaded from environment variables."""
+import os
 from functools import lru_cache
+from urllib.parse import quote
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEV_DATABASE_URL = "postgresql://profiler:profiler@localhost:5432/ai_data_profiler"
+
+
+def _database_url_from_pg_env() -> str:
+    """Build a connection URL from the discrete PG* variables.
+
+    Managed Postgres providers expose both a single DATABASE_URL and the
+    discrete PGHOST/PGUSER/... set. When DATABASE_URL is a cross-service
+    reference that fails to resolve it arrives as an EMPTY STRING rather
+    than being absent, which pydantic happily accepts over the default --
+    the failure then surfaces as an opaque SQLAlchemy parse error at
+    import time. Falling back to the discrete vars keeps the app bootable
+    in that case.
+    """
+    host = os.getenv("PGHOST")
+    user = os.getenv("PGUSER")
+    password = os.getenv("PGPASSWORD")
+    database = os.getenv("PGDATABASE")
+    if not (host and user and database):
+        return ""
+    port = os.getenv("PGPORT", "5432")
+    auth = f"{quote(user, safe='')}:{quote(password, safe='')}" if password else quote(user, safe="")
+    return f"postgresql://{auth}@{host}:{port}/{database}"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Database
-    database_url: str = "postgresql://profiler:profiler@localhost:5432/ai_data_profiler"
+    database_url: str = _DEV_DATABASE_URL
 
     # Auth
     secret_key: str = "insecure-dev-secret-change-me"
@@ -82,7 +109,21 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+
+    if not settings.database_url.strip():
+        fallback = _database_url_from_pg_env()
+        if not fallback:
+            raise RuntimeError(
+                "DATABASE_URL is set but empty, and no PGHOST/PGUSER/PGDATABASE "
+                "fallback is available. On a PaaS this usually means a "
+                "cross-service variable reference (e.g. ${{Postgres.DATABASE_URL}}) "
+                "did not resolve -- check that the referenced service name matches "
+                "exactly and lives in the same environment."
+            )
+        settings.database_url = fallback
+
+    return settings
 
 
 settings = get_settings()
