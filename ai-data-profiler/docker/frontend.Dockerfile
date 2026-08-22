@@ -16,7 +16,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public/ ./public/
 
 # Next.js standalone server reads PORT/HOSTNAME from the environment.
 # HOSTNAME must be 0.0.0.0 or the container only listens on loopback and the
